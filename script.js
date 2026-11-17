@@ -493,6 +493,29 @@ class App {
     UIRenderer.renderStepCounter(this.stepTracker.getProgress());
     UIRenderer.renderActivitySummary(this.activityManager.getSummary());
     UIRenderer.renderRecentActivities(this.activityManager.getActivities());
+    this._renderGreeting();
+  }
+
+  /** Update the greeting banner based on time of day and selected date. */
+  _renderGreeting() {
+    const greetEl = document.getElementById('greeting-text');
+    const subEl = greetEl?.nextElementSibling;
+    if (!greetEl) return;
+
+    const hour = new Date().getHours();
+    let greeting;
+    if (hour < 12) greeting = 'Good Morning! ☀️';
+    else if (hour < 17) greeting = 'Good Afternoon! 🌤️';
+    else greeting = 'Good Evening! 🌙';
+
+    greetEl.textContent = greeting;
+
+    if (subEl) {
+      const isToday = this.selectedDate === App.todayStr();
+      subEl.textContent = isToday
+        ? "Here's your activity summary for today."
+        : `Viewing activities for ${new Date(this.selectedDate + 'T00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}.`;
+    }
   }
 
   // ── Utility ──
