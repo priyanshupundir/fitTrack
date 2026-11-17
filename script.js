@@ -238,13 +238,16 @@ class UIRenderer {
     const offset = UIRenderer.CIRCUMFERENCE * (1 - clamped / 100);
     circle.style.strokeDashoffset = offset;
 
-    // Color shifts: green when ≥ 100%, warning at < 30%
+    // Color shifts: green when ≥ 100%, warning at < 30%, teal otherwise
     if (percent >= 100) {
       circle.style.stroke = 'var(--clr-success)';
+      circle.style.filter = 'drop-shadow(0 0 12px rgba(5,150,105,.4))';
     } else if (percent < 30) {
       circle.style.stroke = 'var(--clr-warning)';
+      circle.style.filter = 'drop-shadow(0 0 12px rgba(217,119,6,.4))';
     } else {
       circle.style.stroke = 'var(--clr-primary)';
+      circle.style.filter = 'drop-shadow(0 0 8px rgba(13,148,136,.3))';
     }
   }
 
