@@ -27,7 +27,20 @@ class StorageManager {
   static load(dateStr) {
     try {
       const raw = localStorage.getItem(StorageManager.key(dateStr));
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const data = JSON.parse(raw);
+        // Validate and sanitize data
+        return {
+          steps: Number.isFinite(data.steps) && data.steps >= 0 ? Math.min(data.steps, 100000) : 0,
+          goal: Number.isFinite(data.goal) && data.goal >= 1 ? Math.min(data.goal, 1000000) : 10000,
+          activities: Array.isArray(data.activities) ? data.activities.filter(act => {
+            return act && typeof act === 'object' &&
+                   typeof act.id === 'string' &&
+                   ActivityManager.TYPES.includes(act.type) &&
+                   Number.isFinite(act.duration) && act.duration > 0;
+          }) : []
+        };
+      }
     } catch (err) {
       console.warn('StorageManager.load — parse error:', err);
     }
@@ -66,13 +79,17 @@ class StepTracker {
   /**
    * Add steps (clamped to 0–100 000 total).
    * @param {number} count
-   * @returns {boolean} success
+   * @returns {{ success: boolean, added: number }}
    */
   addSteps(count) {
-    if (!Number.isFinite(count) || count <= 0) return false;
-    this.steps = Math.min(this.steps + Math.round(count), 100000);
+    // Reject decimal values (not integers)
+    if (!Number.isFinite(count) || count <= 0) return { success: false, added: 0 };
+    if (!Number.isInteger(count)) return { success: false, added: 0 };
+
+    const actualAdded = Math.min(count, 100000 - this.steps);
+    this.steps = Math.min(this.steps + count, 100000);
     this._persist();
-    return true;
+    return { success: true, added: actualAdded };
   }
 
   /**
@@ -87,12 +104,13 @@ class StepTracker {
     return true;
   }
 
-  /** @returns {{ steps: number, goal: number, percent: number }} */
+  /** @returns {{ steps: number, goal: number, percent: number, goalReached: boolean }} */
   getProgress() {
     const percent = this.goal > 0
       ? Math.round((this.steps / this.goal) * 100)
       : 0;
-    return { steps: this.steps, goal: this.goal, percent };
+    const goalReached = this.steps >= this.goal;
+    return { steps: this.steps, goal: this.goal, percent, goalReached };
   }
 
   /** Write current steps & goal back to localStorage (preserving activities). */
@@ -128,6 +146,11 @@ class ActivityManager {
   addActivity(type, duration) {
     if (!ActivityManager.TYPES.includes(type)) return null;
     if (!Number.isFinite(duration) || duration < 1 || duration > 1440) return null;
+    if (!Number.isInteger(duration)) return null;
+
+    // Check total daily activity limit (max 24 hours = 1440 minutes)
+    const totalMinutes = this.activities.reduce((sum, act) => sum + act.duration, 0);
+    if (totalMinutes + duration > 1440) return null;
 
     const activity = {
       id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -212,7 +235,7 @@ class UIRenderer {
 
   /**
    * Update all step-counter UI elements.
-   * @param {{ steps: number, goal: number, percent: number }} progress
+   * @param {{ steps: number, goal: number, percent: number, goalReached: boolean }} progress
    */
   static renderStepCounter(progress) {
     const { steps, goal, percent } = progress;
@@ -223,23 +246,24 @@ class UIRenderer {
     document.getElementById('step-percent').textContent = `${percent}%`;
 
     // Progress ring
-    UIRenderer.renderProgressRing(percent);
+    UIRenderer.renderProgressRing(progress);
   }
 
   /**
    * Animate the SVG progress ring to reflect the given percentage.
-   * @param {number} percent — 0-100+ (capped visually at 100)
+   * @param {{ steps: number, goal: number, percent: number, goalReached: boolean }} progress
    */
-  static renderProgressRing(percent) {
+  static renderProgressRing(progress) {
     const circle = document.getElementById('progress-circle');
     if (!circle) return;
 
+    const { percent, goalReached } = progress;
     const clamped = Math.min(percent, 100);
     const offset = UIRenderer.CIRCUMFERENCE * (1 - clamped / 100);
     circle.style.strokeDashoffset = offset;
 
-    // Color shifts: green when ≥ 100%, warning at < 30%, teal otherwise
-    if (percent >= 100) {
+    // Color shifts: green when goal is actually reached, warning at < 30%, teal otherwise
+    if (goalReached) {
       circle.style.stroke = 'var(--clr-success)';
       circle.style.filter = 'drop-shadow(0 0 12px rgba(5,150,105,.4))';
     } else if (percent < 30) {
@@ -375,6 +399,7 @@ class App {
     this._cacheDom();
     this._bindEvents();
     this._initDatePicker();
+    this._startDateCheck(); // Check for midnight rollover
     this.render();
   }
 
@@ -437,16 +462,36 @@ class App {
     this.dom.datePicker.max = App.todayStr();
   }
 
+  // ── Midnight Rollover Check ──
+
+  _startDateCheck() {
+    // Check every minute if the date has rolled over
+    setInterval(() => {
+      const today = App.todayStr();
+      if (this.selectedDate !== today && this.selectedDate === this.dom.datePicker.value) {
+        // Automatically switch to today if viewing yesterday and it's now today
+        this.selectedDate = today;
+        this.dom.datePicker.value = today;
+        this._reloadDate();
+      }
+    }, 60000); // Check every minute
+  }
+
   // ── Handlers ──
 
   _onAddSteps() {
     const val = Number(this.dom.addStepsInput.value);
-    if (this.stepTracker.addSteps(val)) {
-      UIRenderer.notify(`✅ Added ${val.toLocaleString()} steps!`);
+    const result = this.stepTracker.addSteps(val);
+    if (result.success) {
+      if (result.added < val) {
+        UIRenderer.notify(`✅ Added ${result.added.toLocaleString()} steps (capped at 100,000 total).`);
+      } else {
+        UIRenderer.notify(`✅ Added ${result.added.toLocaleString()} steps!`);
+      }
       this.dom.addStepsInput.value = '';
       this.render();
     } else {
-      UIRenderer.notify('⚠️ Please enter a valid step count.');
+      UIRenderer.notify('⚠️ Please enter a valid integer step count.');
     }
   }
 
