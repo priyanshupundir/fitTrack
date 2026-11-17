@@ -1,6 +1,6 @@
 # FitTrack — Daily Activity Dashboard
 
-A functional daily activity dashboard built with **HTML5**, **CSS3**, and **Vanilla JavaScript (ES6+)**.  
+A functional daily activity dashboard built with **HTML5**, **CSS3**, and **Vanilla JavaScript (ES6+)**.
 No frameworks, no build step — open `index.html` in a browser and it just works.
 
 ---
@@ -31,15 +31,22 @@ Beyond the stated requirements, the following extras were implemented:
 | Edge case | Handling |
 |-----------|----------|
 | Negative or zero step input | Rejected with a toast warning |
-| Step count exceeding the goal | Percentage goes above 100%; progress ring caps visually at 100% and turns green |
-| Very large step values | Total capped at 100,000 steps per day |
+| Decimal/exponent step values (e.g., 1.5, 1e3) | Rejected - only integers accepted |
+| Step count at 9,950 with 10,000 goal | Shows 99% (not 100%) - green only when goal actually reached |
+| Step count exceeding the goal | Percentage goes above 100%; progress ring caps visually at 100% and turns green only when steps >= goal |
+| Very large step values | Total capped at 100,000 steps per day; message shows actual amount added |
 | Duration outside 1–1440 min | Rejected; minimum 1 minute, maximum 24 hours |
+| Decimal duration values | Rejected - only integers accepted |
+| Total daily activity exceeds 24 hours | Rejected - capped at 1440 minutes per day |
 | No activity type selected | Form validation rejects submission |
 | Duplicate rapid submissions | Idempotent — repeated clicks produce additional records (acceptable for a step tracker) |
 | Selecting a date with no data | Shows zero steps and an empty-state message in the activity list |
 | `localStorage` quota exceeded | `try/catch` around `setItem`; a toast warns the user |
 | Invalid JSON in storage | `try/catch` around `getItem`/`parse`; falls back to default data |
+| Corrupted/invalid stored data | Validation and sanitization on load; filters out invalid activities |
 | Missing `crypto.randomUUID` (older browsers) | Fallback to `Date.now()` + random string |
+| Page stays open past midnight | Auto-detects date rollover and switches to today |
+| Delete button on touch screens | Always visible on touch devices (no hover) |
 
 ## 4. JavaScript Structure
 
